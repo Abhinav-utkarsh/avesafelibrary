@@ -1,0 +1,182 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: "Plus Jakarta Sans", "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-navy-950: #061326;
+  --color-navy-900: #0B1F3A;
+  --color-navy-800: #132E54;
+  --color-navy-700: #1D4273;
+  --color-gold-500: #C89B3C;
+  --color-gold-400: #DFB55B;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Global scrollbar hiding across Chrome, Edge, Firefox, Safari
+     without disabling overflow, wheel, touch, or trackpad scrolling */
+  html,
+  body,
+  * {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar,
+  *::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
+  body {
+    @apply bg-[#F7F9FC] text-slate-900 dark:bg-[#060E1C] dark:text-slate-100 antialiased selection:bg-[#0B1F3A] selection:text-white dark:selection:bg-sky-400 dark:selection:text-slate-950;
+  }
+
+  h1, h2, h3, h4, .font-display {
+    font-family: var(--font-display);
+  }
+}
+
+/* Tabular numbers utility for financial and live operational stats */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Premium subtle elevation surfaces */
+.surface-card {
+  box-shadow: 0 1px 2px rgba(11, 31, 58, 0.04), 0 4px 16px -4px rgba(11, 31, 58, 0.04);
+}
+.dark .surface-card {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px -8px rgba(0, 0, 0, 0.35);
+}
+
+.surface-elevated {
+  box-shadow: 0 4px 12px -2px rgba(11, 31, 58, 0.08), 0 16px 36px -8px rgba(11, 31, 58, 0.1);
+}
+.dark .surface-elevated {
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.55), 0 20px 44px -10px rgba(0, 0, 0, 0.6);
+}
+
+/* Respect reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Authentic A4 Print & PDF Formatting for Receipts, Invoices & Reports */
+@page {
+  size: A4 portrait;
+  margin: 12mm;
+}
+
+@media print {
+  html, body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  #nirvana-printable-receipt,
+  #nirvana-printable-receipt *,
+  #nirvana-printable-invoice,
+  #nirvana-printable-invoice *,
+  #nirvana-printable-report,
+  #nirvana-printable-report *,
+  #nirvana-printable-id-cards,
+  #nirvana-printable-id-cards * {
+    visibility: visible;
+  }
+
+  #nirvana-printable-receipt,
+  #nirvana-printable-invoice,
+  #nirvana-printable-report,
+  #nirvana-printable-id-cards {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  #nirvana-printable-id-cards {
+    display: block !important;
+  }
+
+  .cr80-print-card {
+    width: 85.6mm !important;
+    height: 54mm !important;
+    min-width: 85.6mm !important;
+    min-height: 54mm !important;
+    max-width: 85.6mm !important;
+    max-height: 54mm !important;
+    overflow: hidden !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .cr80-print-sheet {
+    break-after: page !important;
+    page-break-after: always !important;
+  }
+
+  .cr80-print-sheet:last-child {
+    break-after: auto !important;
+    page-break-after: auto !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+  }
+
+  thead {
+    display: table-header-group !important;
+  }
+
+  tfoot {
+    display: table-footer-group !important;
+  }
+
+  tr,
+  .avoid-break {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .page-break-before {
+    break-before: page !important;
+    page-break-before: always !important;
+  }
+}

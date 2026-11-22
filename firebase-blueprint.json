@@ -1,0 +1,528 @@
+{
+  "entities": {
+    "AdminUser": {
+      "title": "AdminUser",
+      "description": "Authorized Av_eSAFE Library owner, manager, accounts officer, or desk staff member.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "format": "email", "minLength": 3, "maxLength": 160 },
+        "fullName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "role": { "type": "string", "enum": ["super_admin", "branch_manager", "manager", "accounts", "admin", "staff"] },
+        "branch": { "type": "string", "maxLength": 120 },
+        "phone": { "type": "string", "maxLength": 20 },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "fullName", "role", "active", "createdAt", "updatedAt"]
+    },
+    "AdminInvite": {
+      "title": "AdminInvite",
+      "description": "Super Admin pre-approved Google Sign-In invitation for a staff or manager account.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email", "minLength": 3, "maxLength": 160 },
+        "fullName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "role": { "type": "string", "enum": ["super_admin", "branch_manager", "manager", "accounts", "admin", "staff"] },
+        "branch": { "type": "string", "maxLength": 120 },
+        "phone": { "type": "string", "maxLength": 20 },
+        "active": { "type": "boolean" },
+        "invitedBy": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "claimedByUid": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "fullName", "role", "active", "invitedBy", "createdAt", "updatedAt"]
+    },
+    "Batch": {
+      "title": "Batch",
+      "description": "Exam preparation or study cohort batch (e.g., UPSC, BPSC, Railway, Banking, SSC).",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "code": { "type": "string", "minLength": 2, "maxLength": 30, "pattern": "^[A-Z0-9_\\-]+$" },
+        "category": { "type": "string", "enum": ["upsc", "bpsc", "railway", "banking", "ssc", "state_psc", "defence", "teaching", "neet_jee", "ca_commerce", "law_judiciary", "it_tech", "college_school", "general", "other"] },
+        "targetExam": { "type": "string", "maxLength": 120 },
+        "description": { "type": "string", "maxLength": 400 },
+        "active": { "type": "boolean" },
+        "createdBy": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "code", "category", "active", "createdBy", "createdAt", "updatedAt"]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Enrolled Av_eSAFE Library student record with strict PII isolation.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "registrationNo": { "type": "string", "minLength": 3, "maxLength": 40, "pattern": "^[A-Z0-9_\\-]+$" },
+        "fullName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "phone": { "type": "string", "minLength": 10, "maxLength": 20 },
+        "email": { "type": "string", "format": "email", "maxLength": 160 },
+        "guardianName": { "type": "string", "maxLength": 120 },
+        "guardianPhone": { "type": "string", "maxLength": 20 },
+        "address": { "type": "string", "maxLength": 300 },
+        "dateOfBirth": { "type": "string", "maxLength": 20 },
+        "batchId": { "type": "string", "maxLength": 128 },
+        "batchName": { "type": "string", "maxLength": 100 },
+        "admissionType": { "type": "string", "enum": ["regular", "quick", "demo"] },
+        "status": { "type": "string", "enum": ["active", "expired", "demo", "suspended", "inactive"] },
+        "seatMode": { "type": "string", "enum": ["fixed", "non_fixed", "unseated"] },
+        "seatId": { "type": "string", "maxLength": 40 },
+        "hall": { "type": "string", "enum": ["Hall 1", "Hall 2", "Unassigned"] },
+        "shiftType": { "type": "string", "enum": ["morning", "noon", "evening", "night", "double", "triple", "all_shifts"] },
+        "membershipExpiry": { "type": "string", "maxLength": 40 },
+        "monthlyFee": { "type": "number" },
+        "pendingAmount": { "type": "number" },
+        "fingerprintTemplateId": { "type": "string", "maxLength": 64 },
+        "gender": { "type": "string", "enum": ["male", "female", "other", "prefer_not_to_say"] },
+        "profilePhotoUrl": { "type": "string", "maxLength": 140000 },
+        "profilePhotoUpdatedAt": { "type": "string", "format": "date-time" },
+        "cardNumber": { "type": "string", "maxLength": 40, "pattern": "^[A-Z0-9_\\-]*$" },
+        "cardIssuedAt": { "type": "string", "format": "date-time" },
+        "cardStatus": { "type": "string", "enum": ["none", "active", "revoked", "expired"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["registrationNo", "fullName", "phone", "admissionType", "status", "seatMode", "hall", "shiftType", "monthlyFee", "pendingAmount", "createdAt", "updatedAt"]
+    },
+    "Seat": {
+      "title": "Seat",
+      "description": "Physical study seat in Hall 1 (80 seats) or Hall 2 (40 seats).",
+      "type": "object",
+      "properties": {
+        "seatCode": { "type": "string", "minLength": 2, "maxLength": 20, "pattern": "^[A-Z0-9_\\-]+$" },
+        "hall": { "type": "string", "enum": ["Hall 1", "Hall 2"] },
+        "seatNumber": { "type": "number" },
+        "rowLabel": { "type": "string", "minLength": 1, "maxLength": 10 },
+        "seatType": { "type": "string", "enum": ["fixed", "non_fixed"] },
+        "status": { "type": "string", "enum": ["available", "occupied", "partial", "maintenance"] },
+        "assignedStudentUid": { "type": "string", "maxLength": 128 },
+        "assignedStudentId": { "type": "string", "maxLength": 128 },
+        "assignedStudentName": { "type": "string", "maxLength": 120 },
+        "shiftSlots": { "type": "object" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["seatCode", "hall", "seatNumber", "rowLabel", "seatType", "status", "updatedAt"]
+    },
+    "Membership": {
+      "title": "Membership",
+      "description": "Student shift subscription and seat allocation contract.",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "studentUid": { "type": "string", "maxLength": 128 },
+        "studentName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "shiftType": { "type": "string", "enum": ["morning", "noon", "evening", "night", "double", "triple", "all_shifts"] },
+        "seatMode": { "type": "string", "enum": ["fixed", "non_fixed"] },
+        "seatId": { "type": "string", "maxLength": 40 },
+        "startDate": { "type": "string", "minLength": 8, "maxLength": 40 },
+        "endDate": { "type": "string", "minLength": 8, "maxLength": 40 },
+        "monthlyFee": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "expiring_soon", "expired", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["studentId", "studentName", "shiftType", "seatMode", "startDate", "endDate", "monthlyFee", "status", "createdAt", "updatedAt"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Immutable fee payment and receipt record.",
+      "type": "object",
+      "properties": {
+        "receiptNo": { "type": "string", "minLength": 4, "maxLength": 40, "pattern": "^[A-Z0-9_\\-]+$" },
+        "studentId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "studentUid": { "type": "string", "maxLength": 128 },
+        "studentName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "membershipId": { "type": "string", "maxLength": 128 },
+        "billingMonth": { "type": "string", "minLength": 4, "maxLength": 20 },
+        "amountPaid": { "type": "number" },
+        "discount": { "type": "number" },
+        "dueAmount": { "type": "number" },
+        "paymentMethod": { "type": "string", "enum": ["cash", "upi", "bank_transfer", "card"] },
+        "idempotencyKey": { "type": "string", "minLength": 6, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "notes": { "type": "string", "maxLength": 300 },
+        "collectedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "paidAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["receiptNo", "studentId", "studentName", "billingMonth", "amountPaid", "discount", "dueAmount", "paymentMethod", "idempotencyKey", "collectedBy", "paidAt"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Admin-only library operating expense record.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "minLength": 2, "maxLength": 140 },
+        "category": { "type": "string", "enum": ["electricity", "rent", "internet", "maintenance", "staff", "water", "equipment", "other"] },
+        "amount": { "type": "number" },
+        "vendor": { "type": "string", "maxLength": 120 },
+        "paymentMethod": { "type": "string", "enum": ["cash", "upi", "bank_transfer", "card"] },
+        "expenseDate": { "type": "string", "minLength": 8, "maxLength": 40 },
+        "notes": { "type": "string", "maxLength": 300 },
+        "recordedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "category", "amount", "paymentMethod", "expenseDate", "recordedBy", "createdAt"]
+    },
+    "AttendanceRecord": {
+      "title": "AttendanceRecord",
+      "description": "Student entry and exit attendance log.",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "studentUid": { "type": "string", "maxLength": 128 },
+        "studentName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "date": { "type": "string", "minLength": 8, "maxLength": 20 },
+        "entryTime": { "type": "string", "format": "date-time" },
+        "exitTime": { "type": "string", "format": "date-time" },
+        "durationMinutes": { "type": "number" },
+        "isInside": { "type": "boolean" },
+        "source": { "type": "string", "enum": ["manual", "smart_door", "simulator"] },
+        "deviceId": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["studentId", "studentName", "date", "entryTime", "isInside", "source", "updatedAt"]
+    },
+    "Notice": {
+      "title": "Notice",
+      "description": "Library-wide or shift-targeted announcement.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "minLength": 3, "maxLength": 160 },
+        "body": { "type": "string", "minLength": 3, "maxLength": 2000 },
+        "category": { "type": "string", "enum": ["general", "fee_reminder", "schedule", "maintenance", "exam_alert"] },
+        "priority": { "type": "string", "enum": ["normal", "important", "urgent"] },
+        "audience": { "type": "string", "enum": ["all", "hall_1", "hall_2", "unseated", "expiring"] },
+        "published": { "type": "boolean" },
+        "publishedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "body", "category", "priority", "audience", "published", "publishedBy", "createdAt", "updatedAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "Direct user notification for admins or individual students.",
+      "type": "object",
+      "properties": {
+        "recipientUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "recipientRole": { "type": "string", "enum": ["admin", "student"] },
+        "title": { "type": "string", "minLength": 2, "maxLength": 140 },
+        "message": { "type": "string", "minLength": 2, "maxLength": 600 },
+        "type": { "type": "string", "enum": ["info", "fee_due", "expiry", "seat", "security", "door", "birthday", "ticket"] },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["recipientUid", "recipientRole", "title", "message", "type", "read", "createdAt", "updatedAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Append-only operational and security audit log.",
+      "type": "object",
+      "properties": {
+        "actorUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "actorEmail": { "type": "string", "maxLength": 160 },
+        "actorRole": { "type": "string", "enum": ["super_admin", "branch_manager", "manager", "accounts", "admin", "staff", "system"] },
+        "action": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "resourceType": { "type": "string", "minLength": 2, "maxLength": 60 },
+        "resourceId": { "type": "string", "maxLength": 128 },
+        "summary": { "type": "string", "minLength": 2, "maxLength": 400 },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["actorUid", "actorRole", "action", "resourceType", "summary", "timestamp"]
+    },
+    "IoTDevice": {
+      "title": "IoTDevice",
+      "description": "Smart Door ESP32 controller or isolated simulator definition.",
+      "type": "object",
+      "properties": {
+        "deviceCode": { "type": "string", "minLength": 3, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "location": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "mode": { "type": "string", "enum": ["simulator", "hardware"] },
+        "status": { "type": "string", "enum": ["not_configured", "online", "offline", "maintenance"] },
+        "doorState": { "type": "string", "enum": ["locked", "unlocked", "ajar", "emergency_override"] },
+        "firmwareVersion": { "type": "string", "maxLength": 40 },
+        "antiPassbackEnabled": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["deviceCode", "name", "location", "mode", "status", "doorState", "antiPassbackEnabled", "updatedAt"]
+    },
+    "AccessLog": {
+      "title": "AccessLog",
+      "description": "Append-only Smart Door authorization log.",
+      "type": "object",
+      "properties": {
+        "deviceId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "mode": { "type": "string", "enum": ["simulator", "hardware"] },
+        "studentId": { "type": "string", "maxLength": 128 },
+        "studentName": { "type": "string", "maxLength": 120 },
+        "fingerprintId": { "type": "string", "maxLength": 64 },
+        "direction": { "type": "string", "enum": ["entry", "exit"] },
+        "decision": { "type": "string", "enum": ["GRANTED", "DENIED"] },
+        "reason": { "type": "string", "minLength": 2, "maxLength": 200 },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["deviceId", "mode", "direction", "decision", "reason", "timestamp"]
+    },
+    "LibrarySettings": {
+      "title": "LibrarySettings",
+      "description": "Global Nirvana Library configuration, shifts, fees, and security policies.",
+      "type": "object",
+      "properties": {
+        "libraryName": { "type": "string", "minLength": 2, "maxLength": 140 },
+        "location": { "type": "string", "minLength": 2, "maxLength": 200 },
+        "hall1Capacity": { "type": "number" },
+        "hall2Capacity": { "type": "number" },
+        "operatingHours": { "type": "string", "minLength": 2, "maxLength": 40 },
+        "gracePeriodDays": { "type": "number" },
+        "antiPassbackMinutes": { "type": "number" },
+        "allowDemoAutoExpiry": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["libraryName", "location", "hall1Capacity", "hall2Capacity", "operatingHours", "gracePeriodDays", "antiPassbackMinutes", "allowDemoAutoExpiry", "updatedAt"]
+    },
+    "IdCard": {
+      "title": "IdCard",
+      "description": "Issued Nirvana Library student identity card record with reprint and revocation audit history.",
+      "type": "object",
+      "properties": {
+        "cardNumber": { "type": "string", "minLength": 6, "maxLength": 40, "pattern": "^[A-Z0-9_\\-]+$" },
+        "studentId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "registrationNo": { "type": "string", "minLength": 3, "maxLength": 40, "pattern": "^[A-Z0-9_\\-]+$" },
+        "studentName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "membershipType": { "type": "string", "enum": ["fixed", "non_fixed", "unseated"] },
+        "shiftType": { "type": "string", "enum": ["morning", "noon", "evening", "night", "double", "triple", "all_shifts"] },
+        "hall": { "type": "string", "enum": ["Hall 1", "Hall 2", "Unassigned"] },
+        "seatId": { "type": "string", "maxLength": 40 },
+        "validUntil": { "type": "string", "maxLength": 40 },
+        "status": { "type": "string", "enum": ["active", "revoked", "superseded"] },
+        "issuedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "issuedAt": { "type": "string", "format": "date-time" },
+        "reprintCount": { "type": "number" },
+        "reprintHistory": { "type": "array", "maxItems": 25 },
+        "revokedReason": { "type": "string", "maxLength": 200 },
+        "revokedAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["cardNumber", "studentId", "registrationNo", "studentName", "membershipType", "shiftType", "hall", "status", "issuedBy", "issuedAt", "reprintCount", "updatedAt"]
+    },
+    "CardVerification": {
+      "title": "CardVerification",
+      "description": "Non-PII public single-document verification projection scanned via ID card QR codes.",
+      "type": "object",
+      "properties": {
+        "cardNumber": { "type": "string", "minLength": 6, "maxLength": 40, "pattern": "^[A-Z0-9_\\-]+$" },
+        "registrationNo": { "type": "string", "minLength": 3, "maxLength": 40, "pattern": "^[A-Z0-9_\\-]+$" },
+        "studentName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "membershipType": { "type": "string", "enum": ["fixed", "non_fixed", "unseated"] },
+        "shiftLabel": { "type": "string", "minLength": 2, "maxLength": 60 },
+        "hall": { "type": "string", "enum": ["Hall 1", "Hall 2", "Unassigned"] },
+        "seatId": { "type": "string", "maxLength": 40 },
+        "membershipExpiry": { "type": "string", "maxLength": 40 },
+        "studentStatus": { "type": "string", "enum": ["active", "expired", "demo", "suspended", "inactive"] },
+        "cardStatus": { "type": "string", "enum": ["active", "revoked", "superseded"] },
+        "issuedAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["cardNumber", "registrationNo", "studentName", "membershipType", "shiftLabel", "hall", "studentStatus", "cardStatus", "issuedAt", "updatedAt"]
+    },
+    "OnlinePaymentVerification": {
+      "title": "OnlinePaymentVerification",
+      "description": "Student-submitted or desk-logged online payment proof awaiting verification and receipt issuance.",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "studentUid": { "type": "string", "maxLength": 128 },
+        "studentName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "registrationNo": { "type": "string", "maxLength": 40 },
+        "phone": { "type": "string", "maxLength": 20 },
+        "billingMonth": { "type": "string", "minLength": 4, "maxLength": 20 },
+        "amount": { "type": "number" },
+        "paymentMethod": { "type": "string", "enum": ["upi", "bank_transfer", "card"] },
+        "utrReference": { "type": "string", "minLength": 4, "maxLength": 80 },
+        "payerName": { "type": "string", "maxLength": 120 },
+        "notes": { "type": "string", "maxLength": 300 },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "receiptNo": { "type": "string", "maxLength": 40 },
+        "reviewedBy": { "type": "string", "maxLength": 128 },
+        "reviewNote": { "type": "string", "maxLength": 300 },
+        "submittedByRole": { "type": "string", "enum": ["student", "admin"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["studentId", "studentName", "billingMonth", "amount", "paymentMethod", "utrReference", "status", "submittedByRole", "createdAt", "updatedAt"]
+    },
+    "MessageTemplate": {
+      "title": "MessageTemplate",
+      "description": "Reusable WhatsApp and in-app communication template with dynamic student placeholders.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "category": { "type": "string", "enum": ["fee", "renewal", "birthday", "general", "ticket", "welcome"] },
+        "title": { "type": "string", "minLength": 2, "maxLength": 140 },
+        "body": { "type": "string", "minLength": 5, "maxLength": 1000 },
+        "createdBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "category", "title", "body", "createdBy", "createdAt", "updatedAt"]
+    },
+    "StudentTicket": {
+      "title": "StudentTicket",
+      "description": "Student support ticket raised from the Student Portal or logged by the front desk.",
+      "type": "object",
+      "properties": {
+        "ticketNo": { "type": "string", "minLength": 4, "maxLength": 40, "pattern": "^[A-Z0-9_\\-]+$" },
+        "studentId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "studentUid": { "type": "string", "maxLength": 128 },
+        "studentName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "registrationNo": { "type": "string", "maxLength": 40 },
+        "phone": { "type": "string", "maxLength": 20 },
+        "category": { "type": "string", "enum": ["seat", "fee", "facility", "smart_door", "shift", "other"] },
+        "priority": { "type": "string", "enum": ["normal", "high", "urgent"] },
+        "subject": { "type": "string", "minLength": 3, "maxLength": 140 },
+        "description": { "type": "string", "minLength": 5, "maxLength": 1500 },
+        "status": { "type": "string", "enum": ["open", "in_progress", "resolved", "closed"] },
+        "adminReply": { "type": "string", "maxLength": 1000 },
+        "repliedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ticketNo", "studentId", "studentName", "category", "priority", "subject", "description", "status", "createdAt", "updatedAt"]
+    },
+    "StudentApprovalRequest": {
+      "title": "StudentApprovalRequest",
+      "description": "Student self-registration or existing student seat/shift/course change request pending administrator approval.",
+      "type": "object",
+      "properties": {
+        "referenceNo": { "type": "string", "minLength": 4, "maxLength": 40, "pattern": "^[A-Z0-9_\\-]+$" },
+        "requestType": { "type": "string", "enum": ["new_registration", "seat_shift_change"] },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "studentId": { "type": "string", "maxLength": 128 },
+        "studentUid": { "type": "string", "maxLength": 128 },
+        "registrationNo": { "type": "string", "maxLength": 40 },
+        "fullName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "phone": { "type": "string", "minLength": 10, "maxLength": 20 },
+        "email": { "type": "string", "maxLength": 160 },
+        "gender": { "type": "string", "enum": ["male", "female", "other", "prefer_not_to_say"] },
+        "dateOfBirth": { "type": "string", "maxLength": 20 },
+        "guardianName": { "type": "string", "maxLength": 120 },
+        "guardianPhone": { "type": "string", "maxLength": 20 },
+        "address": { "type": "string", "maxLength": 300 },
+        "batchId": { "type": "string", "maxLength": 128 },
+        "batchName": { "type": "string", "maxLength": 100 },
+        "currentHall": { "type": "string", "enum": ["Hall 1", "Hall 2", "Unassigned"] },
+        "currentSeatId": { "type": "string", "maxLength": 40 },
+        "currentSeatMode": { "type": "string", "enum": ["fixed", "non_fixed", "unseated"] },
+        "currentShiftType": { "type": "string", "enum": ["morning", "noon", "evening", "night", "double", "triple", "all_shifts"] },
+        "requestedHall": { "type": "string", "enum": ["Hall 1", "Hall 2", "Unassigned"] },
+        "requestedSeatId": { "type": "string", "maxLength": 40 },
+        "requestedSeatMode": { "type": "string", "enum": ["fixed", "non_fixed", "unseated"] },
+        "requestedShiftType": { "type": "string", "enum": ["morning", "noon", "evening", "night", "double", "triple", "all_shifts"] },
+        "doublePresetId": { "type": "string", "maxLength": 40 },
+        "estimatedMonthlyFee": { "type": "number" },
+        "hasPortalPassword": { "type": "boolean" },
+        "reason": { "type": "string", "maxLength": 500 },
+        "reviewedBy": { "type": "string", "maxLength": 128 },
+        "reviewedByName": { "type": "string", "maxLength": 120 },
+        "reviewNote": { "type": "string", "maxLength": 400 },
+        "approvedStudentId": { "type": "string", "maxLength": 128 },
+        "approvedRegistrationNo": { "type": "string", "maxLength": 40 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["referenceNo", "requestType", "status", "fullName", "phone", "requestedHall", "requestedSeatMode", "requestedShiftType", "estimatedMonthlyFee", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/admins/{uid}": {
+      "schema": { "$ref": "#/entities/AdminUser" },
+      "description": "Registered Av_eSAFE Library Super Admins, Managers, Accounts officers, and staff."
+    },
+    "/admin_invites/{inviteId}": {
+      "schema": { "$ref": "#/entities/AdminInvite" },
+      "description": "Super Admin pre-approved Google Sign-In invitations for new Admin accounts."
+    },
+    "/batches/{batchId}": {
+      "schema": { "$ref": "#/entities/Batch" },
+      "description": "Exam preparation and study cohort batches (UPSC, BPSC, Railway, Banking, SSC, etc.)."
+    },
+    "/students/{studentId}": {
+      "schema": { "$ref": "#/entities/Student" },
+      "description": "Student profiles, admission status, DOB, batch, avatar, gender, and seat assignment references."
+    },
+    "/seats/{seatId}": {
+      "schema": { "$ref": "#/entities/Seat" },
+      "description": "All 120 seats across Hall 1 (80) and Hall 2 (40)."
+    },
+    "/memberships/{membershipId}": {
+      "schema": { "$ref": "#/entities/Membership" },
+      "description": "Shift memberships and expiry windows."
+    },
+    "/payments/{paymentId}": {
+      "schema": { "$ref": "#/entities/Payment" },
+      "description": "Immutable fee payment and receipt ledger."
+    },
+    "/expenses/{expenseId}": {
+      "schema": { "$ref": "#/entities/Expense" },
+      "description": "Admin-only library expenses."
+    },
+    "/attendance/{recordId}": {
+      "schema": { "$ref": "#/entities/AttendanceRecord" },
+      "description": "Student entry and exit records."
+    },
+    "/notices/{noticeId}": {
+      "schema": { "$ref": "#/entities/Notice" },
+      "description": "Library announcements."
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "Personal alerts for admins and students."
+    },
+    "/audit_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Append-only admin and security audit trail."
+    },
+    "/iot_devices/{deviceId}": {
+      "schema": { "$ref": "#/entities/IoTDevice" },
+      "description": "Smart Door controllers and isolated simulator definitions."
+    },
+    "/access_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AccessLog" },
+      "description": "Append-only Smart Door access authorization logs."
+    },
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/LibrarySettings" },
+      "description": "Av_eSAFE Library global configuration document."
+    },
+    "/id_cards/{cardNumber}": {
+      "schema": { "$ref": "#/entities/IdCard" },
+      "description": "Admin-only student ID card issuance, reprint, and revocation records."
+    },
+    "/card_verifications/{cardNumber}": {
+      "schema": { "$ref": "#/entities/CardVerification" },
+      "description": "Non-PII public single-document lookup for QR card verification (list disabled)."
+    },
+    "/online_payment_verifications/{verificationId}": {
+      "schema": { "$ref": "#/entities/OnlinePaymentVerification" },
+      "description": "Online UPI and bank transfer payment verification requests."
+    },
+    "/message_templates/{templateId}": {
+      "schema": { "$ref": "#/entities/MessageTemplate" },
+      "description": "Reusable admin communication and WhatsApp message templates."
+    },
+    "/student_tickets/{ticketId}": {
+      "schema": { "$ref": "#/entities/StudentTicket" },
+      "description": "Student helpdesk and support tickets with admin resolution replies."
+    },
+    "/student_approval_requests/{requestId}": {
+      "schema": { "$ref": "#/entities/StudentApprovalRequest" },
+      "description": "Student self-registration applications and seat/shift change requests requiring Admin approval."
+    }
+  }
+}

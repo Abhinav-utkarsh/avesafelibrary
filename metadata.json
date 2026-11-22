@@ -1,0 +1,6 @@
+{
+  "name": "Nirvana Library Management System",
+  "description": "Full-stack library operations platform for Nirvana Library, Narkatiaganj (Bihar) with an Admin Portal, Student Mobile Portal, 120-seat management, and Smart Door integration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

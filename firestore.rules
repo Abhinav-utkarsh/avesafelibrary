@@ -1,0 +1,1122 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Pillar 0: Global Default-Deny Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================================================
+    // GLOBAL PRIMITIVES & IDENTITY HELPERS
+    // =========================================================================
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidCardNumber(cardNo) {
+      return cardNo is string && cardNo.size() >= 6 && cardNo.size() <= 40 && cardNo.matches('^[A-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Strictly required whenever trusting request.auth.token.email (prevents email spoofing)
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isBootstrapAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'abhinavutkarsh3@gmail.com';
+    }
+
+    // UID-bound admin lookup: supports both Google Sign-In and Super-Admin-provisioned Email/Password logins
+    function isAdminRecord() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.active == true;
+    }
+
+    function isAdmin() {
+      return isBootstrapAdmin() || isAdminRecord();
+    }
+
+    function isSuperAdmin() {
+      return isBootstrapAdmin()
+        || (
+          isAdminRecord()
+          && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'super_admin'
+        );
+    }
+
+    function isValidAdminRole(role) {
+      return role in ['super_admin', 'branch_manager', 'manager', 'accounts', 'admin', 'staff'];
+    }
+
+    function isOptionalString(data, field, maxLen) {
+      return !(field in data) || (data[field] is string && data[field].size() <= maxLen);
+    }
+
+    function isRequiredString(data, field, minLen, maxLen) {
+      return (field in data) && data[field] is string && data[field].size() >= minLen && data[field].size() <= maxLen;
+    }
+
+    function isValidShift(shift) {
+      return shift in ['morning', 'noon', 'evening', 'night', 'double', 'triple', 'all_shifts'];
+    }
+
+    function isValidProfilePhoto(data) {
+      return !('profilePhotoUrl' in data) || (
+        data.profilePhotoUrl is string
+        && data.profilePhotoUrl.size() <= 140000
+        && (
+          data.profilePhotoUrl == ''
+          || data.profilePhotoUrl.matches('^https://.*')
+          || data.profilePhotoUrl.matches('^data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$')
+        )
+      );
+    }
+
+    function inviteKeyForEmail(email) {
+      return email.lower().replace('[^a-z0-9]', '_');
+    }
+
+    function hasValidAdminInviteFor(email, role) {
+      return isVerifiedUser()
+        && email == request.auth.token.email
+        && exists(/databases/$(database)/documents/admin_invites/$(inviteKeyForEmail(email)))
+        && get(/databases/$(database)/documents/admin_invites/$(inviteKeyForEmail(email))).data.active == true
+        && get(/databases/$(database)/documents/admin_invites/$(inviteKeyForEmail(email))).data.email == email
+        && get(/databases/$(database)/documents/admin_invites/$(inviteKeyForEmail(email))).data.role == role;
+    }
+
+    // =========================================================================
+    // ENTITY VALIDATION BLUEPRINTS (Pillar 2: Anti-Update-Gap)
+    // =========================================================================
+    function isValidAdminUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'fullName', 'role', 'active', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'fullName', 'role', 'branch', 'phone', 'active', 'createdAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && isRequiredString(data, 'email', 3, 160)
+        && isRequiredString(data, 'fullName', 2, 120)
+        && isValidAdminRole(data.role)
+        && isOptionalString(data, 'branch', 120)
+        && isOptionalString(data, 'phone', 20)
+        && data.active is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAdminInvite(data) {
+      return data.keys().hasAll(['email', 'fullName', 'role', 'active', 'invitedBy', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'email', 'fullName', 'role', 'branch', 'phone',
+          'active', 'invitedBy', 'claimedByUid', 'createdAt', 'updatedAt'
+        ])
+        && isRequiredString(data, 'email', 3, 160)
+        && isRequiredString(data, 'fullName', 2, 120)
+        && isValidAdminRole(data.role)
+        && isOptionalString(data, 'branch', 120)
+        && isOptionalString(data, 'phone', 20)
+        && data.active is bool
+        && isValidId(data.invitedBy)
+        && isOptionalString(data, 'claimedByUid', 128)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidBatch(data) {
+      return data.keys().hasAll(['name', 'code', 'category', 'active', 'createdBy', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'name', 'code', 'category', 'targetExam', 'description',
+          'active', 'createdBy', 'createdAt', 'updatedAt'
+        ])
+        && isRequiredString(data, 'name', 2, 100)
+        && isRequiredString(data, 'code', 2, 30)
+        && data.code.matches('^[A-Z0-9_\\-]+$')
+        && data.category in [
+          'upsc', 'bpsc', 'railway', 'banking', 'ssc', 'state_psc',
+          'defence', 'teaching', 'neet_jee', 'ca_commerce', 'law_judiciary',
+          'it_tech', 'college_school', 'general', 'other'
+        ]
+        && isOptionalString(data, 'targetExam', 120)
+        && isOptionalString(data, 'description', 400)
+        && data.active is bool
+        && isValidId(data.createdBy)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidStudent(data) {
+      return data.keys().hasAll([
+          'registrationNo', 'fullName', 'phone', 'admissionType', 'status',
+          'seatMode', 'hall', 'shiftType', 'monthlyFee', 'pendingAmount', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'registrationNo', 'fullName', 'phone', 'email',
+          'guardianName', 'guardianPhone', 'address', 'dateOfBirth',
+          'batchId', 'batchName', 'admissionType', 'status',
+          'seatMode', 'seatId', 'hall', 'shiftType', 'membershipExpiry',
+          'monthlyFee', 'pendingAmount', 'fingerprintTemplateId',
+          'gender', 'profilePhotoUrl', 'profilePhotoUpdatedAt',
+          'cardNumber', 'cardIssuedAt', 'cardStatus',
+          'createdAt', 'updatedAt'
+        ])
+        && isOptionalString(data, 'uid', 128)
+        && isRequiredString(data, 'registrationNo', 3, 40)
+        && data.registrationNo.matches('^[A-Z0-9_\\-]+$')
+        && isRequiredString(data, 'fullName', 2, 120)
+        && isRequiredString(data, 'phone', 10, 20)
+        && isOptionalString(data, 'email', 160)
+        && isOptionalString(data, 'guardianName', 120)
+        && isOptionalString(data, 'guardianPhone', 20)
+        && isOptionalString(data, 'address', 300)
+        && isOptionalString(data, 'dateOfBirth', 20)
+        && isOptionalString(data, 'batchId', 128)
+        && isOptionalString(data, 'batchName', 100)
+        && data.admissionType in ['regular', 'quick', 'demo']
+        && data.status in ['active', 'expired', 'demo', 'suspended', 'inactive']
+        && data.seatMode in ['fixed', 'non_fixed', 'unseated']
+        && isOptionalString(data, 'seatId', 40)
+        && data.hall in ['Hall 1', 'Hall 2', 'Unassigned']
+        && isValidShift(data.shiftType)
+        && isOptionalString(data, 'membershipExpiry', 40)
+        && data.monthlyFee is number && data.monthlyFee >= 0 && data.monthlyFee <= 100000
+        && data.pendingAmount is number && data.pendingAmount >= 0 && data.pendingAmount <= 500000
+        && isOptionalString(data, 'fingerprintTemplateId', 64)
+        && (!('gender' in data) || data.gender in ['male', 'female', 'other', 'prefer_not_to_say'])
+        && isValidProfilePhoto(data)
+        && (!('profilePhotoUpdatedAt' in data) || data.profilePhotoUpdatedAt is timestamp)
+        && (!('cardNumber' in data) || (data.cardNumber is string && data.cardNumber.size() <= 40 && data.cardNumber.matches('^[A-Z0-9_\\-]*$')))
+        && (!('cardIssuedAt' in data) || data.cardIssuedAt is timestamp)
+        && (!('cardStatus' in data) || data.cardStatus in ['none', 'active', 'revoked', 'expired'])
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSeat(data) {
+      return data.keys().hasAll(['seatCode', 'hall', 'seatNumber', 'rowLabel', 'seatType', 'status', 'updatedAt'])
+        && data.keys().hasOnly([
+          'seatCode', 'hall', 'seatNumber', 'rowLabel', 'seatType', 'status',
+          'assignedStudentUid', 'assignedStudentId', 'assignedStudentName', 'shiftSlots', 'updatedAt'
+        ])
+        && isRequiredString(data, 'seatCode', 2, 20)
+        && data.seatCode.matches('^[A-Z0-9_\\-]+$')
+        && data.hall in ['Hall 1', 'Hall 2']
+        && data.seatNumber is int && data.seatNumber >= 1 && data.seatNumber <= 120
+        && isRequiredString(data, 'rowLabel', 1, 10)
+        && data.seatType in ['fixed', 'non_fixed']
+        && data.status in ['available', 'occupied', 'partial', 'maintenance']
+        && isOptionalString(data, 'assignedStudentUid', 128)
+        && isOptionalString(data, 'assignedStudentId', 128)
+        && isOptionalString(data, 'assignedStudentName', 120)
+        && (!('shiftSlots' in data) || data.shiftSlots is map)
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidMembership(data) {
+      return data.keys().hasAll([
+          'studentId', 'studentName', 'shiftType', 'seatMode', 'startDate',
+          'endDate', 'monthlyFee', 'status', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'studentId', 'studentUid', 'studentName', 'shiftType', 'seatMode',
+          'seatId', 'startDate', 'endDate', 'monthlyFee', 'status', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.studentId)
+        && isOptionalString(data, 'studentUid', 128)
+        && isRequiredString(data, 'studentName', 2, 120)
+        && isValidShift(data.shiftType)
+        && data.seatMode in ['fixed', 'non_fixed']
+        && isOptionalString(data, 'seatId', 40)
+        && isRequiredString(data, 'startDate', 8, 40)
+        && isRequiredString(data, 'endDate', 8, 40)
+        && data.monthlyFee is number && data.monthlyFee >= 0 && data.monthlyFee <= 100000
+        && data.status in ['active', 'expiring_soon', 'expired', 'cancelled']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPayment(data) {
+      return data.keys().hasAll([
+          'receiptNo', 'studentId', 'studentName', 'billingMonth', 'amountPaid',
+          'discount', 'dueAmount', 'paymentMethod', 'idempotencyKey', 'collectedBy', 'paidAt'
+        ])
+        && data.keys().hasOnly([
+          'receiptNo', 'studentId', 'studentUid', 'studentName', 'membershipId',
+          'billingMonth', 'amountPaid', 'discount', 'dueAmount', 'paymentMethod',
+          'idempotencyKey', 'notes', 'collectedBy', 'paidAt'
+        ])
+        && isRequiredString(data, 'receiptNo', 4, 40)
+        && data.receiptNo.matches('^[A-Z0-9_\\-]+$')
+        && isValidId(data.studentId)
+        && isOptionalString(data, 'studentUid', 128)
+        && isRequiredString(data, 'studentName', 2, 120)
+        && isOptionalString(data, 'membershipId', 128)
+        && isRequiredString(data, 'billingMonth', 4, 20)
+        && data.amountPaid is number && data.amountPaid >= 0 && data.amountPaid <= 500000
+        && data.discount is number && data.discount >= 0 && data.discount <= 100000
+        && data.dueAmount is number && data.dueAmount >= 0 && data.dueAmount <= 500000
+        && data.paymentMethod in ['cash', 'upi', 'bank_transfer', 'card']
+        && isValidId(data.idempotencyKey)
+        && isOptionalString(data, 'notes', 300)
+        && isValidId(data.collectedBy)
+        && data.collectedBy == request.auth.uid
+        && data.paidAt is timestamp;
+    }
+
+    function isValidExpense(data) {
+      return data.keys().hasAll(['title', 'category', 'amount', 'paymentMethod', 'expenseDate', 'recordedBy', 'createdAt'])
+        && data.keys().hasOnly(['title', 'category', 'amount', 'vendor', 'paymentMethod', 'expenseDate', 'notes', 'recordedBy', 'createdAt'])
+        && isRequiredString(data, 'title', 2, 140)
+        && data.category in ['electricity', 'rent', 'internet', 'maintenance', 'staff', 'water', 'equipment', 'other']
+        && data.amount is number && data.amount > 0 && data.amount <= 1000000
+        && isOptionalString(data, 'vendor', 120)
+        && data.paymentMethod in ['cash', 'upi', 'bank_transfer', 'card']
+        && isRequiredString(data, 'expenseDate', 8, 40)
+        && isOptionalString(data, 'notes', 300)
+        && isValidId(data.recordedBy)
+        && data.recordedBy == request.auth.uid
+        && data.createdAt is timestamp;
+    }
+
+    function isValidAttendance(data) {
+      return data.keys().hasAll(['studentId', 'studentName', 'date', 'entryTime', 'isInside', 'source', 'updatedAt'])
+        && data.keys().hasOnly([
+          'studentId', 'studentUid', 'studentName', 'date', 'entryTime',
+          'exitTime', 'durationMinutes', 'isInside', 'source', 'deviceId', 'updatedAt'
+        ])
+        && isValidId(data.studentId)
+        && isOptionalString(data, 'studentUid', 128)
+        && isRequiredString(data, 'studentName', 2, 120)
+        && isRequiredString(data, 'date', 8, 20)
+        && data.entryTime is timestamp
+        && (!('exitTime' in data) || data.exitTime is timestamp)
+        && (!('durationMinutes' in data) || (data.durationMinutes is number && data.durationMinutes >= 0 && data.durationMinutes <= 1440))
+        && data.isInside is bool
+        && data.source in ['manual', 'smart_door', 'simulator']
+        && isOptionalString(data, 'deviceId', 64)
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidNotice(data) {
+      return data.keys().hasAll(['title', 'body', 'category', 'priority', 'audience', 'published', 'publishedBy', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['title', 'body', 'category', 'priority', 'audience', 'published', 'publishedBy', 'createdAt', 'updatedAt'])
+        && isRequiredString(data, 'title', 3, 160)
+        && isRequiredString(data, 'body', 3, 2000)
+        && data.category in ['general', 'fee_reminder', 'schedule', 'maintenance', 'exam_alert']
+        && data.priority in ['normal', 'important', 'urgent']
+        && data.audience in ['all', 'hall_1', 'hall_2', 'unseated', 'expiring']
+        && data.published is bool
+        && isValidId(data.publishedBy)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidNotification(data) {
+      return data.keys().hasAll(['recipientUid', 'recipientRole', 'title', 'message', 'type', 'read', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['recipientUid', 'recipientRole', 'title', 'message', 'type', 'read', 'createdAt', 'updatedAt'])
+        && isValidId(data.recipientUid)
+        && data.recipientRole in ['admin', 'student']
+        && isRequiredString(data, 'title', 2, 140)
+        && isRequiredString(data, 'message', 2, 600)
+        && data.type in ['info', 'fee_due', 'expiry', 'seat', 'security', 'door', 'birthday', 'ticket']
+        && data.read is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll(['actorUid', 'actorRole', 'action', 'resourceType', 'summary', 'timestamp'])
+        && data.keys().hasOnly(['actorUid', 'actorEmail', 'actorRole', 'action', 'resourceType', 'resourceId', 'summary', 'timestamp'])
+        && isValidId(data.actorUid)
+        && data.actorUid == request.auth.uid
+        && isOptionalString(data, 'actorEmail', 160)
+        && data.actorRole in ['super_admin', 'branch_manager', 'manager', 'accounts', 'admin', 'staff', 'system']
+        && isRequiredString(data, 'action', 2, 80)
+        && isRequiredString(data, 'resourceType', 2, 60)
+        && isOptionalString(data, 'resourceId', 128)
+        && isRequiredString(data, 'summary', 2, 400)
+        && data.timestamp is timestamp;
+    }
+
+    function isValidIoTDevice(data) {
+      return data.keys().hasAll(['deviceCode', 'name', 'location', 'mode', 'status', 'doorState', 'antiPassbackEnabled', 'updatedAt'])
+        && data.keys().hasOnly(['deviceCode', 'name', 'location', 'mode', 'status', 'doorState', 'firmwareVersion', 'antiPassbackEnabled', 'updatedAt'])
+        && isValidId(data.deviceCode)
+        && isRequiredString(data, 'name', 2, 120)
+        && isRequiredString(data, 'location', 2, 120)
+        && data.mode in ['simulator', 'hardware']
+        && data.status in ['not_configured', 'online', 'offline', 'maintenance']
+        && data.doorState in ['locked', 'unlocked', 'ajar', 'emergency_override']
+        && isOptionalString(data, 'firmwareVersion', 40)
+        && data.antiPassbackEnabled is bool
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAccessLog(data) {
+      return data.keys().hasAll(['deviceId', 'mode', 'direction', 'decision', 'reason', 'timestamp'])
+        && data.keys().hasOnly(['deviceId', 'mode', 'studentId', 'studentName', 'fingerprintId', 'direction', 'decision', 'reason', 'timestamp'])
+        && isValidId(data.deviceId)
+        && data.mode in ['simulator', 'hardware']
+        && isOptionalString(data, 'studentId', 128)
+        && isOptionalString(data, 'studentName', 120)
+        && isOptionalString(data, 'fingerprintId', 64)
+        && data.direction in ['entry', 'exit']
+        && data.decision in ['GRANTED', 'DENIED']
+        && isRequiredString(data, 'reason', 2, 200)
+        && data.timestamp is timestamp;
+    }
+
+    function isValidLibrarySettings(data) {
+      return data.keys().hasAll([
+          'libraryName', 'location', 'hall1Capacity', 'hall2Capacity',
+          'operatingHours', 'gracePeriodDays', 'antiPassbackMinutes', 'allowDemoAutoExpiry', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'libraryName', 'location', 'hall1Capacity', 'hall2Capacity',
+          'operatingHours', 'gracePeriodDays', 'antiPassbackMinutes', 'allowDemoAutoExpiry', 'updatedAt'
+        ])
+        && isRequiredString(data, 'libraryName', 2, 140)
+        && isRequiredString(data, 'location', 2, 200)
+        && data.hall1Capacity is int && data.hall1Capacity == 80
+        && data.hall2Capacity is int && data.hall2Capacity == 40
+        && isRequiredString(data, 'operatingHours', 2, 40)
+        && data.gracePeriodDays is int && data.gracePeriodDays >= 0 && data.gracePeriodDays <= 30
+        && data.antiPassbackMinutes is int && data.antiPassbackMinutes >= 0 && data.antiPassbackMinutes <= 120
+        && data.allowDemoAutoExpiry is bool
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidIdCard(data) {
+      return data.keys().hasAll([
+          'cardNumber', 'studentId', 'registrationNo', 'studentName',
+          'membershipType', 'shiftType', 'hall', 'status',
+          'issuedBy', 'issuedAt', 'reprintCount', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'cardNumber', 'studentId', 'registrationNo', 'studentName',
+          'membershipType', 'shiftType', 'hall', 'seatId', 'validUntil',
+          'status', 'issuedBy', 'issuedAt', 'reprintCount', 'reprintHistory',
+          'revokedReason', 'revokedAt', 'updatedAt'
+        ])
+        && isValidCardNumber(data.cardNumber)
+        && isValidId(data.studentId)
+        && isRequiredString(data, 'registrationNo', 3, 40)
+        && data.registrationNo.matches('^[A-Z0-9_\\-]+$')
+        && isRequiredString(data, 'studentName', 2, 120)
+        && data.membershipType in ['fixed', 'non_fixed', 'unseated']
+        && isValidShift(data.shiftType)
+        && data.hall in ['Hall 1', 'Hall 2', 'Unassigned']
+        && isOptionalString(data, 'seatId', 40)
+        && isOptionalString(data, 'validUntil', 40)
+        && data.status in ['active', 'revoked', 'superseded']
+        && isValidId(data.issuedBy)
+        && data.issuedAt is timestamp
+        && data.reprintCount is int && data.reprintCount >= 0 && data.reprintCount <= 500
+        && (!('reprintHistory' in data) || (data.reprintHistory is list && data.reprintHistory.size() <= 25))
+        && isOptionalString(data, 'revokedReason', 200)
+        && (!('revokedAt' in data) || data.revokedAt is timestamp)
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCardVerification(data) {
+      return data.keys().hasAll([
+          'cardNumber', 'registrationNo', 'studentName', 'membershipType',
+          'shiftLabel', 'hall', 'studentStatus', 'cardStatus', 'issuedAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'cardNumber', 'registrationNo', 'studentName', 'membershipType',
+          'shiftLabel', 'hall', 'seatId', 'membershipExpiry',
+          'studentStatus', 'cardStatus', 'issuedAt', 'updatedAt'
+        ])
+        && isValidCardNumber(data.cardNumber)
+        && isRequiredString(data, 'registrationNo', 3, 40)
+        && data.registrationNo.matches('^[A-Z0-9_\\-]+$')
+        && isRequiredString(data, 'studentName', 2, 120)
+        && data.membershipType in ['fixed', 'non_fixed', 'unseated']
+        && isRequiredString(data, 'shiftLabel', 2, 60)
+        && data.hall in ['Hall 1', 'Hall 2', 'Unassigned']
+        && isOptionalString(data, 'seatId', 40)
+        && isOptionalString(data, 'membershipExpiry', 40)
+        && data.studentStatus in ['active', 'expired', 'demo', 'suspended', 'inactive']
+        && data.cardStatus in ['active', 'revoked', 'superseded']
+        && data.issuedAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidOnlinePaymentVerification(data) {
+      return data.keys().hasAll([
+          'studentId', 'studentName', 'billingMonth', 'amount', 'paymentMethod',
+          'utrReference', 'status', 'submittedByRole', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'studentId', 'studentUid', 'studentName', 'registrationNo', 'phone',
+          'billingMonth', 'amount', 'paymentMethod', 'utrReference', 'payerName',
+          'notes', 'status', 'receiptNo', 'reviewedBy', 'reviewNote',
+          'submittedByRole', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.studentId)
+        && isOptionalString(data, 'studentUid', 128)
+        && isRequiredString(data, 'studentName', 2, 120)
+        && isOptionalString(data, 'registrationNo', 40)
+        && isOptionalString(data, 'phone', 20)
+        && isRequiredString(data, 'billingMonth', 4, 20)
+        && data.amount is number && data.amount > 0 && data.amount <= 500000
+        && data.paymentMethod in ['upi', 'bank_transfer', 'card']
+        && isRequiredString(data, 'utrReference', 4, 80)
+        && isOptionalString(data, 'payerName', 120)
+        && isOptionalString(data, 'notes', 300)
+        && data.status in ['pending', 'approved', 'rejected']
+        && isOptionalString(data, 'receiptNo', 40)
+        && isOptionalString(data, 'reviewedBy', 128)
+        && isOptionalString(data, 'reviewNote', 300)
+        && data.submittedByRole in ['student', 'admin']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidMessageTemplate(data) {
+      return data.keys().hasAll(['name', 'category', 'title', 'body', 'createdBy', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['name', 'category', 'title', 'body', 'createdBy', 'createdAt', 'updatedAt'])
+        && isRequiredString(data, 'name', 2, 100)
+        && data.category in ['fee', 'renewal', 'birthday', 'general', 'ticket', 'welcome']
+        && isRequiredString(data, 'title', 2, 140)
+        && isRequiredString(data, 'body', 5, 1000)
+        && isValidId(data.createdBy)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidStudentTicket(data) {
+      return data.keys().hasAll([
+          'ticketNo', 'studentId', 'studentName', 'category', 'priority',
+          'subject', 'description', 'status', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ticketNo', 'studentId', 'studentUid', 'studentName', 'registrationNo', 'phone',
+          'category', 'priority', 'subject', 'description', 'status',
+          'adminReply', 'repliedBy', 'createdAt', 'updatedAt'
+        ])
+        && isRequiredString(data, 'ticketNo', 4, 40)
+        && data.ticketNo.matches('^[A-Z0-9_\\-]+$')
+        && isValidId(data.studentId)
+        && isOptionalString(data, 'studentUid', 128)
+        && isRequiredString(data, 'studentName', 2, 120)
+        && isOptionalString(data, 'registrationNo', 40)
+        && isOptionalString(data, 'phone', 20)
+        && data.category in ['seat', 'fee', 'facility', 'smart_door', 'shift', 'other']
+        && data.priority in ['normal', 'high', 'urgent']
+        && isRequiredString(data, 'subject', 3, 140)
+        && isRequiredString(data, 'description', 5, 1500)
+        && data.status in ['open', 'in_progress', 'resolved', 'closed']
+        && isOptionalString(data, 'adminReply', 1000)
+        && isOptionalString(data, 'repliedBy', 128)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidStudentApprovalRequest(data) {
+      return data.keys().hasAll([
+          'referenceNo', 'requestType', 'status', 'fullName', 'phone',
+          'requestedHall', 'requestedSeatMode', 'requestedShiftType',
+          'estimatedMonthlyFee', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'referenceNo', 'requestType', 'status', 'studentId', 'studentUid',
+          'registrationNo', 'fullName', 'phone', 'email', 'gender',
+          'dateOfBirth', 'guardianName', 'guardianPhone', 'address',
+          'batchId', 'batchName', 'currentHall', 'currentSeatId',
+          'currentSeatMode', 'currentShiftType', 'requestedHall',
+          'requestedSeatId', 'requestedSeatMode', 'requestedShiftType',
+          'doublePresetId', 'estimatedMonthlyFee', 'hasPortalPassword',
+          'reason', 'reviewedBy', 'reviewedByName', 'reviewNote',
+          'approvedStudentId', 'approvedRegistrationNo',
+          'createdAt', 'updatedAt'
+        ])
+        && isRequiredString(data, 'referenceNo', 4, 40)
+        && data.referenceNo.matches('^[A-Z0-9_\\-]+$')
+        && data.requestType in ['new_registration', 'seat_shift_change']
+        && data.status in ['pending', 'approved', 'rejected']
+        && isOptionalString(data, 'studentId', 128)
+        && isOptionalString(data, 'studentUid', 128)
+        && isOptionalString(data, 'registrationNo', 40)
+        && isRequiredString(data, 'fullName', 2, 120)
+        && isRequiredString(data, 'phone', 8, 20)
+        && isOptionalString(data, 'email', 160)
+        && (!('gender' in data) || data.gender == '' || data.gender in ['male', 'female', 'other', 'prefer_not_to_say'])
+        && isOptionalString(data, 'dateOfBirth', 20)
+        && isOptionalString(data, 'guardianName', 120)
+        && isOptionalString(data, 'guardianPhone', 20)
+        && isOptionalString(data, 'address', 300)
+        && isOptionalString(data, 'batchId', 128)
+        && isOptionalString(data, 'batchName', 100)
+        && (!('currentHall' in data) || data.currentHall == '' || data.currentHall in ['Hall 1', 'Hall 2', 'Unassigned'])
+        && isOptionalString(data, 'currentSeatId', 40)
+        && (!('currentSeatMode' in data) || data.currentSeatMode == '' || data.currentSeatMode in ['fixed', 'non_fixed', 'unseated'])
+        && (!('currentShiftType' in data) || data.currentShiftType == '' || isValidShift(data.currentShiftType))
+        && data.requestedHall in ['Hall 1', 'Hall 2', 'Unassigned']
+        && isOptionalString(data, 'requestedSeatId', 40)
+        && data.requestedSeatMode in ['fixed', 'non_fixed', 'unseated']
+        && isValidShift(data.requestedShiftType)
+        && isOptionalString(data, 'doublePresetId', 40)
+        && data.estimatedMonthlyFee is number && data.estimatedMonthlyFee >= 0 && data.estimatedMonthlyFee <= 100000
+        && (!('hasPortalPassword' in data) || data.hasPortalPassword is bool)
+        && isOptionalString(data, 'reason', 500)
+        && isOptionalString(data, 'reviewedBy', 128)
+        && isOptionalString(data, 'reviewedByName', 120)
+        && isOptionalString(data, 'reviewNote', 400)
+        && isOptionalString(data, 'approvedStudentId', 128)
+        && isOptionalString(data, 'approvedRegistrationNo', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // =========================================================================
+    // COLLECTION MATCH BLOCKS (Complete 17-Collection Coverage)
+    // =========================================================================
+
+    match /admins/{uid} {
+      allow get: if isSignedIn() && isValidId(uid) && (request.auth.uid == uid || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isSignedIn()
+        && isValidId(uid)
+        && isValidAdminUser(incoming())
+        && incoming().uid == uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (
+          isSuperAdmin() ||
+          (isBootstrapAdmin() && uid == request.auth.uid && incoming().email == request.auth.token.email && incoming().role == 'super_admin' && incoming().active == true) ||
+          (uid == request.auth.uid && incoming().active == true && hasValidAdminInviteFor(incoming().email, incoming().role))
+        );
+      allow update: if isSignedIn()
+        && isValidId(uid)
+        && isValidAdminUser(incoming())
+        && isSuperAdmin()
+        && incoming().uid == existing().uid
+        && incoming().email == existing().email
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && !(uid == request.auth.uid && (!incoming().active || incoming().role != 'super_admin'))
+        && incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'role', 'branch', 'phone', 'active', 'updatedAt']);
+      allow delete: if isSignedIn()
+        && isValidId(uid)
+        && isSuperAdmin()
+        && uid != request.auth.uid
+        && existing().email != 'abhinavutkarsh3@gmail.com';
+    }
+
+    match /admin_invites/{inviteId} {
+      allow get: if isSignedIn() && isValidId(inviteId) && (
+        isSuperAdmin() ||
+        (isVerifiedUser() && existing().email == request.auth.token.email)
+      );
+      allow list: if isSuperAdmin();
+      allow create: if isSignedIn()
+        && isValidId(inviteId)
+        && isValidAdminInvite(incoming())
+        && isSuperAdmin()
+        && incoming().invitedBy == request.auth.uid
+        && incoming().active == true
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isSignedIn()
+        && isValidId(inviteId)
+        && isValidAdminInvite(incoming())
+        && incoming().email == existing().email
+        && incoming().invitedBy == existing().invitedBy
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (isSuperAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'role', 'branch', 'phone', 'active', 'updatedAt'])) ||
+          (
+            isVerifiedUser()
+            && existing().email == request.auth.token.email
+            && existing().active == true
+            && incoming().active == false
+            && incoming().claimedByUid == request.auth.uid
+            && incoming().diff(existing()).affectedKeys().hasOnly(['active', 'claimedByUid', 'updatedAt'])
+          )
+        );
+      allow delete: if isSignedIn() && isValidId(inviteId) && isSuperAdmin();
+    }
+
+    match /batches/{batchId} {
+      allow get: if isSignedIn() && isValidId(batchId) && (isAdmin() || existing().active == true);
+      allow list: if isSignedIn() && (isAdmin() || resource.data.active == true);
+      allow create: if isSignedIn()
+        && isValidId(batchId)
+        && isValidBatch(incoming())
+        && incoming().createdBy == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && isAdmin();
+      allow update: if isSignedIn()
+        && isValidId(batchId)
+        && isValidBatch(incoming())
+        && incoming().createdBy == existing().createdBy
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && isAdmin()
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'name', 'code', 'category', 'targetExam', 'description', 'active', 'updatedAt'
+        ]);
+      allow delete: if isSignedIn() && isValidId(batchId) && isAdmin();
+    }
+
+    match /students/{studentId} {
+      allow get: if isSignedIn() && isValidId(studentId) && (
+        isAdmin() ||
+        existing().uid == request.auth.uid ||
+        (isVerifiedUser() && 'email' in existing() && existing().email is string && existing().email.size() > 0 && existing().email == request.auth.token.email)
+      );
+      allow list: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.uid == request.auth.uid ||
+        (isVerifiedUser() && resource.data.email is string && resource.data.email.size() > 0 && resource.data.email == request.auth.token.email)
+      );
+      allow create: if isSignedIn()
+        && isValidId(studentId)
+        && isValidStudent(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && isAdmin();
+      allow update: if isSignedIn()
+        && isValidId(studentId)
+        && isValidStudent(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly([
+            'uid', 'fullName', 'phone', 'email', 'guardianName', 'guardianPhone',
+            'address', 'dateOfBirth', 'batchId', 'batchName', 'admissionType', 'status',
+            'seatMode', 'seatId', 'hall', 'shiftType', 'membershipExpiry',
+            'monthlyFee', 'pendingAmount', 'fingerprintTemplateId', 'gender',
+            'profilePhotoUrl', 'profilePhotoUpdatedAt', 'cardNumber', 'cardIssuedAt',
+            'cardStatus', 'updatedAt'
+          ])) ||
+          (
+            isVerifiedUser()
+            && 'email' in existing()
+            && existing().email == request.auth.token.email
+            && (!('uid' in existing()) || existing().uid == '')
+            && incoming().uid == request.auth.uid
+            && incoming().diff(existing()).affectedKeys().hasOnly(['uid', 'updatedAt'])
+          ) ||
+          (
+            existing().uid == request.auth.uid
+            && incoming().uid == existing().uid
+            && incoming().diff(existing()).affectedKeys().hasOnly(['gender', 'dateOfBirth', 'profilePhotoUrl', 'profilePhotoUpdatedAt', 'updatedAt'])
+          )
+        );
+      allow delete: if isSignedIn() && isValidId(studentId) && isAdmin();
+    }
+
+    match /seats/{seatId} {
+      allow get: if isSignedIn() && isValidId(seatId) && (isAdmin() || existing().assignedStudentUid == request.auth.uid);
+      allow list: if isSignedIn() && (isAdmin() || resource.data.assignedStudentUid == request.auth.uid);
+      allow create: if isSignedIn()
+        && isValidId(seatId)
+        && isValidSeat(incoming())
+        && incoming().updatedAt == request.time
+        && isAdmin();
+      allow update: if isSignedIn()
+        && isValidId(seatId)
+        && isValidSeat(incoming())
+        && incoming().seatCode == existing().seatCode
+        && incoming().hall == existing().hall
+        && incoming().seatNumber == existing().seatNumber
+        && incoming().updatedAt == request.time
+        && isAdmin()
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'rowLabel', 'seatType', 'status', 'assignedStudentUid',
+          'assignedStudentId', 'assignedStudentName', 'shiftSlots', 'updatedAt'
+        ]);
+      allow delete: if false;
+    }
+
+    match /memberships/{membershipId} {
+      allow get: if isSignedIn() && isValidId(membershipId) && (isAdmin() || existing().studentUid == request.auth.uid);
+      allow list: if isSignedIn() && (isAdmin() || resource.data.studentUid == request.auth.uid);
+      allow create: if isSignedIn()
+        && isValidId(membershipId)
+        && isValidMembership(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && isAdmin()
+        && exists(/databases/$(database)/documents/students/$(incoming().studentId));
+      allow update: if isSignedIn()
+        && isValidId(membershipId)
+        && isValidMembership(incoming())
+        && incoming().studentId == existing().studentId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && isAdmin()
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'studentUid', 'studentName', 'shiftType', 'seatMode', 'seatId',
+          'startDate', 'endDate', 'monthlyFee', 'status', 'updatedAt'
+        ]);
+      allow delete: if false;
+    }
+
+    match /payments/{paymentId} {
+      allow get: if isSignedIn() && isValidId(paymentId) && (isAdmin() || existing().studentUid == request.auth.uid);
+      allow list: if isSignedIn() && (isAdmin() || resource.data.studentUid == request.auth.uid);
+      allow create: if isSignedIn()
+        && isValidId(paymentId)
+        && isValidPayment(incoming())
+        && incoming().paidAt == request.time
+        && isAdmin()
+        && exists(/databases/$(database)/documents/students/$(incoming().studentId));
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    match /expenses/{expenseId} {
+      allow get: if isSignedIn() && isValidId(expenseId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isSignedIn()
+        && isValidId(expenseId)
+        && isValidExpense(incoming())
+        && incoming().createdAt == request.time
+        && isAdmin();
+      allow update: if isSignedIn()
+        && isValidId(expenseId)
+        && isValidExpense(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().recordedBy == existing().recordedBy
+        && isAdmin()
+        && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'category', 'amount', 'vendor', 'paymentMethod', 'expenseDate', 'notes']);
+      allow delete: if isSignedIn() && isValidId(expenseId) && isAdmin();
+    }
+
+    match /attendance/{recordId} {
+      allow get: if isSignedIn() && isValidId(recordId) && (isAdmin() || existing().studentUid == request.auth.uid);
+      allow list: if isSignedIn() && (isAdmin() || resource.data.studentUid == request.auth.uid);
+      allow create: if isSignedIn()
+        && isValidId(recordId)
+        && isValidAttendance(incoming())
+        && incoming().updatedAt == request.time
+        && isAdmin()
+        && exists(/databases/$(database)/documents/students/$(incoming().studentId));
+      allow update: if isSignedIn()
+        && isValidId(recordId)
+        && isValidAttendance(incoming())
+        && incoming().studentId == existing().studentId
+        && incoming().date == existing().date
+        && incoming().entryTime == existing().entryTime
+        && incoming().updatedAt == request.time
+        && isAdmin()
+        && incoming().diff(existing()).affectedKeys().hasOnly(['exitTime', 'durationMinutes', 'isInside', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    match /notices/{noticeId} {
+      allow get: if isSignedIn() && isValidId(noticeId) && (isAdmin() || existing().published == true);
+      allow list: if isSignedIn() && (isAdmin() || resource.data.published == true);
+      allow create: if isSignedIn()
+        && isValidId(noticeId)
+        && isValidNotice(incoming())
+        && incoming().publishedBy == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && isAdmin();
+      allow update: if isSignedIn()
+        && isValidId(noticeId)
+        && isValidNotice(incoming())
+        && incoming().publishedBy == existing().publishedBy
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && isAdmin()
+        && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'body', 'category', 'priority', 'audience', 'published', 'updatedAt']);
+      allow delete: if isSignedIn() && isValidId(noticeId) && isAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow get: if isSignedIn() && isValidId(notificationId) && (isAdmin() || existing().recipientUid == request.auth.uid);
+      allow list: if isSignedIn() && (isAdmin() || resource.data.recipientUid == request.auth.uid);
+      allow create: if isSignedIn()
+        && isValidId(notificationId)
+        && isValidNotification(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && isAdmin();
+      allow update: if isSignedIn()
+        && isValidId(notificationId)
+        && isValidNotification(incoming())
+        && incoming().recipientUid == existing().recipientUid
+        && incoming().recipientRole == existing().recipientRole
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'message', 'type', 'read', 'updatedAt'])) ||
+          (existing().recipientUid == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['read', 'updatedAt']))
+        );
+      allow delete: if isSignedIn() && isValidId(notificationId) && isAdmin();
+    }
+
+    match /audit_logs/{logId} {
+      allow get: if isSignedIn() && isValidId(logId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isSignedIn()
+        && isValidId(logId)
+        && isValidAuditLog(incoming())
+        && incoming().timestamp == request.time
+        && isAdmin();
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    match /iot_devices/{deviceId} {
+      allow get: if isSignedIn() && isValidId(deviceId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isSignedIn()
+        && isValidId(deviceId)
+        && isValidIoTDevice(incoming())
+        && incoming().updatedAt == request.time
+        && isAdmin();
+      allow update: if isSignedIn()
+        && isValidId(deviceId)
+        && isValidIoTDevice(incoming())
+        && incoming().deviceCode == existing().deviceCode
+        && incoming().updatedAt == request.time
+        && isAdmin()
+        && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'location', 'mode', 'status', 'doorState', 'firmwareVersion', 'antiPassbackEnabled', 'updatedAt']);
+      allow delete: if isSignedIn() && isValidId(deviceId) && isAdmin();
+    }
+
+    match /access_logs/{logId} {
+      allow get: if isSignedIn() && isValidId(logId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isSignedIn()
+        && isValidId(logId)
+        && isValidAccessLog(incoming())
+        && incoming().timestamp == request.time
+        && isAdmin();
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    match /settings/{settingId} {
+      allow get: if isSignedIn() && isValidId(settingId) && (isAdmin() || settingId == 'library_config');
+      allow list: if isAdmin();
+      allow create: if isSignedIn()
+        && isValidId(settingId)
+        && isValidLibrarySettings(incoming())
+        && incoming().updatedAt == request.time
+        && isAdmin();
+      allow update: if isSignedIn()
+        && isValidId(settingId)
+        && isValidLibrarySettings(incoming())
+        && incoming().updatedAt == request.time
+        && isAdmin()
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'libraryName', 'location', 'hall1Capacity', 'hall2Capacity',
+          'operatingHours', 'gracePeriodDays', 'antiPassbackMinutes', 'allowDemoAutoExpiry', 'updatedAt'
+        ]);
+      allow delete: if false;
+    }
+
+    match /id_cards/{cardNumber} {
+      allow get: if isSignedIn() && isValidCardNumber(cardNumber) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isSignedIn()
+        && isValidCardNumber(cardNumber)
+        && isValidIdCard(incoming())
+        && incoming().cardNumber == cardNumber
+        && incoming().issuedBy == request.auth.uid
+        && incoming().issuedAt == request.time
+        && incoming().updatedAt == request.time
+        && isAdmin()
+        && exists(/databases/$(database)/documents/students/$(incoming().studentId));
+      allow update: if isSignedIn()
+        && isValidCardNumber(cardNumber)
+        && isValidIdCard(incoming())
+        && incoming().cardNumber == existing().cardNumber
+        && incoming().studentId == existing().studentId
+        && incoming().issuedBy == existing().issuedBy
+        && incoming().issuedAt == existing().issuedAt
+        && incoming().updatedAt == request.time
+        && isAdmin()
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'studentName', 'membershipType', 'shiftType', 'hall', 'seatId',
+          'validUntil', 'status', 'reprintCount', 'reprintHistory',
+          'revokedReason', 'revokedAt', 'updatedAt'
+        ]);
+      allow delete: if false;
+    }
+
+    // Non-PII public single-document lookup for QR verification (list strictly forbidden)
+    match /card_verifications/{cardNumber} {
+      allow get: if isValidCardNumber(cardNumber);
+      allow list: if false;
+      allow create: if isSignedIn()
+        && isValidCardNumber(cardNumber)
+        && isValidCardVerification(incoming())
+        && incoming().cardNumber == cardNumber
+        && incoming().issuedAt == request.time
+        && incoming().updatedAt == request.time
+        && isAdmin();
+      allow update: if isSignedIn()
+        && isValidCardNumber(cardNumber)
+        && isValidCardVerification(incoming())
+        && incoming().cardNumber == existing().cardNumber
+        && incoming().issuedAt == existing().issuedAt
+        && incoming().updatedAt == request.time
+        && isAdmin()
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'registrationNo', 'studentName', 'membershipType', 'shiftLabel',
+          'hall', 'seatId', 'membershipExpiry', 'studentStatus', 'cardStatus', 'updatedAt'
+        ]);
+      allow delete: if false;
+    }
+
+    match /online_payment_verifications/{verificationId} {
+      allow get: if isSignedIn() && isValidId(verificationId) && (isAdmin() || existing().studentUid == request.auth.uid);
+      allow list: if isSignedIn() && (isAdmin() || resource.data.studentUid == request.auth.uid);
+      allow create: if isSignedIn()
+        && isValidId(verificationId)
+        && isValidOnlinePaymentVerification(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && incoming().status == 'pending'
+        && exists(/databases/$(database)/documents/students/$(incoming().studentId))
+        && (
+          (isAdmin() && incoming().submittedByRole == 'admin') ||
+          (
+            incoming().studentUid == request.auth.uid
+            && incoming().submittedByRole == 'student'
+            && get(/databases/$(database)/documents/students/$(incoming().studentId)).data.uid == request.auth.uid
+          )
+        );
+      allow update: if isSignedIn()
+        && isValidId(verificationId)
+        && isValidOnlinePaymentVerification(incoming())
+        && isAdmin()
+        && incoming().studentId == existing().studentId
+        && incoming().utrReference == existing().utrReference
+        && incoming().amount == existing().amount
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'status', 'receiptNo', 'reviewedBy', 'reviewNote', 'updatedAt'
+        ]);
+      allow delete: if isSignedIn() && isValidId(verificationId) && isAdmin();
+    }
+
+    match /message_templates/{templateId} {
+      allow get: if isSignedIn() && isValidId(templateId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isSignedIn()
+        && isValidId(templateId)
+        && isValidMessageTemplate(incoming())
+        && incoming().createdBy == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && isAdmin();
+      allow update: if isSignedIn()
+        && isValidId(templateId)
+        && isValidMessageTemplate(incoming())
+        && incoming().createdBy == existing().createdBy
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && isAdmin()
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'name', 'category', 'title', 'body', 'updatedAt'
+        ]);
+      allow delete: if isSignedIn() && isValidId(templateId) && isAdmin();
+    }
+
+    match /student_tickets/{ticketId} {
+      allow get: if isSignedIn() && isValidId(ticketId) && (isAdmin() || existing().studentUid == request.auth.uid);
+      allow list: if isSignedIn() && (isAdmin() || resource.data.studentUid == request.auth.uid);
+      allow create: if isSignedIn()
+        && isValidId(ticketId)
+        && isValidStudentTicket(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && incoming().status == 'open'
+        && exists(/databases/$(database)/documents/students/$(incoming().studentId))
+        && (
+          isAdmin() ||
+          (
+            incoming().studentUid == request.auth.uid
+            && get(/databases/$(database)/documents/students/$(incoming().studentId)).data.uid == request.auth.uid
+          )
+        );
+      allow update: if isSignedIn()
+        && isValidId(ticketId)
+        && isValidStudentTicket(incoming())
+        && incoming().ticketNo == existing().ticketNo
+        && incoming().studentId == existing().studentId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly([
+            'status', 'priority', 'adminReply', 'repliedBy', 'updatedAt'
+          ])) ||
+          (
+            existing().studentUid == request.auth.uid
+            && existing().status != 'closed'
+            && incoming().status == 'closed'
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+          )
+        );
+      allow delete: if isSignedIn() && isValidId(ticketId) && isAdmin();
+    }
+
+    match /student_approval_requests/{requestId} {
+      allow get: if isSignedIn() && isValidId(requestId) && (
+        isAdmin() ||
+        existing().studentUid == request.auth.uid
+      );
+      allow list: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.studentUid == request.auth.uid
+      );
+      allow create: if isSignedIn()
+        && isValidId(requestId)
+        && isValidStudentApprovalRequest(incoming())
+        && incoming().status == 'pending'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (
+            incoming().requestType == 'seat_shift_change'
+            && 'studentId' in incoming()
+            && isValidId(incoming().studentId)
+            && incoming().studentUid == request.auth.uid
+            && exists(/databases/$(database)/documents/students/$(incoming().studentId))
+            && get(/databases/$(database)/documents/students/$(incoming().studentId)).data.uid == request.auth.uid
+          )
+        );
+      allow update: if isSignedIn()
+        && isValidId(requestId)
+        && isValidStudentApprovalRequest(incoming())
+        && isAdmin()
+        && incoming().referenceNo == existing().referenceNo
+        && incoming().requestType == existing().requestType
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'status', 'studentId', 'registrationNo', 'requestedHall', 'requestedSeatId',
+          'requestedSeatMode', 'requestedShiftType', 'doublePresetId', 'estimatedMonthlyFee',
+          'reviewedBy', 'reviewedByName', 'reviewNote', 'approvedStudentId',
+          'approvedRegistrationNo', 'updatedAt'
+        ]);
+      allow delete: if isSignedIn() && isValidId(requestId) && isAdmin();
+    }
+  }
+}
